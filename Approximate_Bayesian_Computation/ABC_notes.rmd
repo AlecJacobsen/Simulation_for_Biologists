@@ -1,0 +1,577 @@
+---
+title: | 
+  | Introduction to Simulation for Biologists:
+  | Approximate Bayesian Computation (ABC) in `R`
+author: 
+        - Jun Ishigohoka
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output: 
+   pdf_document
+bibliography: ref.bib
+
+header-includes:
+ \usepackage{titling}
+ \usepackage{float}
+ \floatplacement{figure}{H}
+
+linkcolor: blue
+urlcolor: blue
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_chunk$set(
+  class.source = "numberLines lineAnchors",
+  cache = TRUE
+)
+```
+
+
+
+\pagenumbering{gobble}
+
+```{r, echo = F,out.width = '70%', fig.align = "center"}
+knitr::include_graphics("figs/abc.jpg")
+```
+
+\newpage
+\setcounter{tocdepth}{2}
+\tableofcontents 
+
+
+
+\newpage
+\pagenumbering{arabic}
+
+
+```{r, echo=F}
+mu_truth <- pi * 10^(-8)
+write.table(mu_truth, "data/mu_truth.txt", row.names = F, col.names = F)
+system("gzip -f data/mu_truth.txt")
+
+```
+
+# Introduction
+
+
+Likelihood function, which depicts the probability of observed data as a function of parameters of a statistical model, is essential in statistical inference.
+For many biological problems, it is challenging for us empiricists --- and often even for theoreticians --- to derive likelihood functions.
+**Approximate Bayesian Computation (ABC)** bypasses analytical evaluation of the likelihood function using simulation.
+
+
+In ABC, the likelihood function is approximated by comparing simulated data (under a model with sampled parameters) with the observed data. 
+In the simplest form of ABC with the rejection algorithm, a set of parameters are sampled from a prior distribution.
+Given a parameter $\theta$, a dataset $D_{sim}$ is simulated under a model $M$.
+Parameter $\theta$ under model $M$ is accepted when
+$$\rho (D_{sim} , D_{obs}) \le \epsilon$$
+where $\rho (D_{sim} , D_{obs})$ denotes the distance (e.g. Euclidean) between $D_{sim}$ and $D_{obs}$, and $\epsilon \ge 0$ is tolerance.
+In simple words, this means that we reject a parameter $\theta$ under model $M$ if the simulated data $D_{sim}$ is too different from $D_{obs}$.
+
+
+The probability of generating a dataset $D_{sim}$ closer to the observed dataset $D_{obs}$ than the distance measure of $\epsilon$ typically decreases as the dimensionality of the data increases (Think of throwing 100 coins otherwise identical but with 100 different colours).
+This is problematic for ABC because it reduces the computational efficiency.
+To deal with this issue, a set of summary statistics $S(D)$ with a lower dimensionality is used, instead of raw data $D$.
+In the Luria-Delbrück experiment, one can use mean and variance of resistant colonies per plate instead of frequency distribution of number of colonies.
+By substituting $D_{sim}$ and $D_{obs}$ with $S(D_{sim})$ and $S(D_{obs})$, the acceptance criterion of the ABC rejection algorithm becomes
+$$\rho(S(D_{sim}), S(D_{obs})) \le \epsilon$$
+By applying this rejection algorithm to all simulated data under model $M$, we obtain a subset of sampled parameter values, the distribution of which can be regarded as an approximation to the posterior distribution.
+
+
+
+![Parameter estimation by ABC. Adapted from @sunnaker_approximate_2013](figs/abc_plos.png)
+
+
+In addition to parameter inference described above, ABC can be used for model selection [@bertorelle_abc_2010;@csillery_abc_2012].
+Posterior probability of a model $M_i$ is approximated as 
+$$Pr(M_{i} | \rho(S(D_{sim}), S(D_{obs})) \le \epsilon)$$
+In simple words, the posterior probability of model $M_i$ is approximated as the proportion of accepted simulations of model $M_i$ out of accepted simulations of all models.
+
+
+
+Here, we will apply ABC to the Luria-Delbrück experiment.
+The objectives are 
+
+1. to determine which of the induced or spontaneous mutation models is the case;
+1. to estimate mutation rate under the model
+
+
+In this exercise, we will apply ABC to the Luria-Delbrück experiment.
+First, we will determine which of models (induced and spontaneous mutation) fits better to data.
+Second, we will infer parameter (mutation rate).
+To this end, we will use `abc` package [@csillery_abc_2012], which implements the rejection algorithm described above in functions.
+Optionally, you can try other methods than the rejection algorithm implemented in `abc` (multinomial logistic regression and neural networks for model selection; local linear regression and neural networks for parameter inference) and ABC random forest implemented in `abcrf` [@raynal_abc_2019].
+
+
+
+
+# Installation of required packages
+
+
+We will use
+
++ `abc`
++ `abcrf`
++ `fluctuateR`
+
+`fluctuateR` contains a few functions defined during the first exercise.
+You can use your own functions instead if you want.
+
+
+To install them, run:
+
+```{r, eval = FALSE}
+install.packages("abc")
+install.packages("abcrf")
+devtools::install_github("junishigohoka/fluctuateR")
+```
+
+
+
+To load them, run:
+
+```{r}
+library("abc")
+library("abcrf")
+library("fluctuateR")
+```
+
+
+
+# Simulation of a Luria-Delbrück experiment
+
+Here we will run a simulation, the output of which will be used as our observation.
+As biologists in 2024 we know that the spontaneous mutation model is the case, so we run this simulation using `simLD_spo`.
+The mutation rate is read from a compressed file `data/mu_truth.txt.gz`, which we will infer with ABC later.
+
+To be a little bit more realistic, I suggest we change the parameter values of the experiment from the previous exercise.
+
+First, I do not want to waste my working hours waiting for cells to grow.
+I also do not want to leave the lab late at night or come to the lab early in the morning.
+Because I work 8 hours a day, overnight is $24 - 8 = 16$ hours.
+Assuming the cells divide 3 times every hour, the number of generations overnight is $3 \times 16 = 48$.
+In addition, because I am lazy, I do not want to count cells before plating.
+So I would rather take a fixed proportion of the medium of the tube ($1/1,000,000,000$) by serial dilution.
+Let's run an experiment and store the mean and variance of the number of resistant colonies in a named vector `d_obs`.
+
+
+```{r}
+
+T <- 48 # Number of generations
+n_0 <- 100 # Initial number of cells in the tube
+n_sample <- (n_0 * (2^T))/1e9 # Number of cells to plate
+r <- 50 # Number of plates per experiment (A/B)
+
+
+set.seed(1234)
+d_obs <- simLD_spo(n_gens = T,
+          mut_rate = as.numeric(readLines("data/mu_truth.txt.gz")),
+          ncells_init = 100,
+          n_sample = n_sample,
+          n_plates = r
+)
+d_obs
+```
+
+
+
+# Simulation for inference
+
+
+In ABC, we need to sample parameters and simulate data for models.
+In our Luria-Delbrück experiment, we have two models: induced and spontaneous mutation.
+We will simulate each model 10,000 times with mutation rates sampled from a log uniform distribution between $10^{-10}$ and $10^{-5}$.
+We store sampled mutation rates in a vector `mu_sim`.
+
+
+
+```{r}
+nsims <- 10000
+mu_sim <- 10^runif(nsims, -10, -5)
+head(mu_sim)
+```
+
+
+First, let's simulate the Luria-Delbrück experiment for these mutation rates under the spontaneous mutation model.
+The simulated data will be in a data frame `d_sim_spo`.
+In the code block below, I simulate the data if simulated data has not been written in `data/d_sim_spo.rds` and store it in `data/d_sim_spo.rds`.
+
+
+
+```{r}
+if(file.exists("data/d_sim_spo.rds")){
+        d_sim_spo <- readRDS("data/d_sim_spo.rds")
+}else{
+        d_sim_spo <- as.data.frame(t(sapply(mu_sim,
+               function(x){
+                       simLD_spo(T, x, 100, n_0 * (2^T)/1e9, r)
+               }
+        )))
+        saveRDS(d_sim_spo, "data/d_sim_spo.rds")
+}
+
+
+
+head(d_sim_spo)
+
+
+```
+
+Second, let's simulate the Luria-Delbrück experiment under the induced mutation model.
+The simulated data will be in a data frame `d_sim_ind`.
+
+```{r}
+if(file.exists("data/d_sim_ind.rds")){
+        d_sim_ind <- readRDS("data/d_sim_ind.rds")
+}else{
+        d_sim_ind <- as.data.frame(t(sapply(mu_sim,
+               function(x){
+                       simLD_ind(n_plates = r, n_sample = as.integer(n_sample), mut_rate = x)
+               }
+        )))
+        saveRDS(d_sim_ind, "data/d_sim_ind.rds")
+}
+
+
+
+head(d_sim_ind)
+
+```
+
+
+
+Let's concatenate the data frames into a single data frame `d_sim`.
+
+
+```{r}
+
+d_sim <- as.data.frame(rbind(d_sim_spo, d_sim_ind))
+head(d_sim)
+tail(d_sim)
+```
+
+The models of in total 20,000 simulations are recorded in a vector `models`.
+```{r}
+models <- rep(c("spo", "ind"), each = nsims)
+head(models)
+tail(models)
+```
+
+
+
+
+# ABC using `abc`
+
+This tutorial is based on the official vignette of `abc`, tailored for our Luria-Delbrück experiment.
+Interested readers are encouraged to read <https://cran.r-project.org/web/packages/abc/vignettes/abcvignette.pdf> as well as the original paper [@csillery_abc_2012].
+
+
+
+
+## Cross-validation for model selection
+
+To evaluate if ABC can, at all, distinguish between the two models, we perform a cross-validation for model selection using `abc::cv4postpr`, which implements a leave-one-out cross-validation.
+Here, we randomly take summary statistics of one simulation replicate as a pseudo-observation, and its parameter is estimated with the rejecting algorithm using all other simulations.
+This is repeated `nval = 100` times, and numbers of classifications are summarised in a confusion matrix.
+
+
+
+```{r}
+
+cv_modsel_rej <- cv4postpr(index = models,
+                       sumstat = d_sim,
+                       method = "rejection",
+                       nval = 100, 
+                       tols = 0.05
+)
+summary(cv_modsel_rej)
+
+```
+
+In the confusion matrix, the j-th column of the i-th row is the number of times that the i-th model were classified as the j-th model.
+Our confusion matrix shows that if the truth is the induced model, then you can tell that it is induced.
+If the truth is the spontaneous model, then you can tell that it is induced 68 times out of 100.
+When the classified model is spontaneous, you can be sure that it is spontaneous.
+When the classified model is induced, the truth could still be the spontaneous model 32 times out of 132.
+
+
+## Model selection 
+
+Now, let's perform model selection with ABC using `abc::postpr`.
+
+
+```{r}
+
+modsel_abc <- postpr(target = as.data.frame(t(d_obs)), 
+       index = models, 
+       sumstat = d_sim, 
+       tol = 0.05, 
+       method="rejection")
+
+summary(modsel_abc)
+
+```
+
+The summary shows that the posterior probability of the spontaneous model is 1 (!!!).
+
+
+
+## Goodness-of-fit
+
+
+Before turning to parameter inference, it is important to check that the preferred model provides a good fit to the data.
+The null distribution is computed for the distance between true parameter value and the mean parameter values for accepted replicates with `abc` for `nb.replicate = 100` randomly sampled simulation replicates.
+The observed distance (i.e. the distance based on the output of `abc` using observed data) is compared with the null distribution.
+If the model provides a good fit to the data, then the observed distance should be within the null distribution (say, $p > 0.05$).
+
+
+
+```{r}
+gfit_abc <- gfit(target=log10(as.data.frame(t(d_obs)) + 1), 
+             sumstat = log10(d_sim + 1),
+             tol = 0.05,
+             statistic=mean, 
+             nb.replicate=100)
+
+summary(gfit_abc)
+plot(gfit_abc)
+
+```
+
+
+The observed distance is between mean and median of null distribution, so the model fits very well to the data.
+
+
+Another way to investigate the goodness-of-fit is PCA.
+We can visualise the PCA envelope for the considered models and plot the observed data onto it using `abc::gfitpca`.
+
+
+```{r}
+
+gfitpca(target = log10(as.data.frame(t(d_obs)) + 1),
+        sumstat = log10(d_sim + 1),
+        index = models, 
+        cprob = 0.1,
+        xlim = c(-5, 5)
+)
+
+```
+
+
+
+Alternatively, we could also use a base R function `prcomp`.
+
+
+```{r}
+
+
+d_sim <- as.data.frame(rbind(d_sim_spo, d_sim_ind))
+
+
+pca_both <- prcomp(log10(rbind(d_obs, d_sim_spo, d_sim_ind) + 1))
+pca_spo <- prcomp(log10(rbind(d_obs, d_sim_spo) + 1))
+
+
+
+plot(pca_spo$x[2:(nsims),1], pca_spo$x[2:(nsims),2], col = 2,
+     xlab = "PC1",
+     ylab = "PC2"
+)
+points(pca_spo$x[1,1], pca_spo$x[1,2], pch = c(4,1), cex = 2, lwd =3)
+legend("topleft",
+       legend = c("Observed", "Spontaneous"),
+       col = c(1, 2),
+       pch = c(4, 1),
+       pt.cex = c(1, 1)
+)
+
+
+
+```
+
+In either way, the spontaneous mutation model fits well with the observed data.
+
+
+
+
+## Cross-validation
+
+As in model selection, we should check if parameter inference of ABC (implemented in `abc::abc`) can estimate the parameter.
+
+```{r}
+cv_parinf_rej <- cv4abc(param = log10(mu_sim), 
+                       sumstat = d_sim_spo,
+                       nval=100, 
+                       tols=0.05, 
+                       method="rejection")
+summary(cv_parinf_rej)
+```
+
+```{r}
+plot(cv_parinf_rej, caption = "log10(mut rate)")
+```
+
+
+The log-transformed mutation rate can be estimated well with `abc::abc`.
+
+
+
+
+## Parameter inference
+
+Let's estimate the mutation rate.
+
+```{r}
+
+parinf_abc <- abc(target = as.data.frame(t(d_obs)), 
+                  param = log10(mu_sim),
+                  sumstat = d_sim_spo,
+                  tol=0.01, 
+                  method="rejection")
+
+plot(density(parinf_abc$unadj.value),
+     xlim = c(-10, -5),
+     xlab = expression(paste(log[10], "(Mutation rate)")),
+     main = "Posterior distribution"
+)
+abline(v = log10(as.numeric(readLines("data/mu_truth.txt.gz"))),
+       col = 2,
+       lty = 2
+)
+
+```
+
+The vertical line is the true mutation rate, so ABC with the simple rejection algorithm can tell the (order of) mutation rate very well.
+
+
+```{r}
+10^quantile(parinf_abc$unadj.value, c(0.025, 0.5, 0.975))
+
+
+```
+
+
+
+## Posterior predictive check
+
+
+Lastly, let's check if the observed summary statistics are well represented by the summary statistics of the accepted simulations.
+Note this is a bit of cheating: one should actually simulate *a posteori* using parameters sampled from the posterior. 
+
+
+```{r}
+par(mfrow=c(2,2))
+for(i in 1:4){
+        hist(parinf_abc$ss[,i],
+             main = colnames(parinf_abc$ss)[i],
+             xlab = colnames(parinf_abc$ss)[i]
+        )
+        abline(v=d_obs[i], col = 2, lty = 2)
+}
+
+
+```
+
+The observed summary statistics (vertical lines) are in the middle of those of accepted simulations.
+
+
+
+
+
+
+# References
+
+<div id="refs"></div>
+
+
+
+\newpage
+
+# Appendix
+
+## ABC random forest using `abcrf`
+
+
+### Model selection
+
+
+```{r}
+
+model_rf <- abcrf(formula = as.factor(models)~.,
+                  data = d_sim,
+                  ntree = 1000,
+                  paral = TRUE,
+                  ncores = 8
+)
+
+```
+
+
+
+
+```{r}
+
+modsel_rf <- predict(object = model_rf,
+                     obs = as.data.frame(t(d_obs)),
+                     training = d_sim,
+                     ntree = 1000,
+                     paral = TRUE,
+                     paral.predict = TRUE
+)
+
+modsel_rf
+
+```
+
+
+
+### Parameter inference
+
+
+```{r}
+model <- regAbcrf(formula = log10(mu_sim) ~ .,
+                  data = d_sim_spo,
+                  ntree = 1000,
+                  paral = TRUE
+)
+
+
+```
+
+```{r}
+posterior <- predict(object = model,
+                     obs = as.data.frame(t(d_obs)),
+                     training = d_sim_spo,
+                     paral = TRUE,
+                     rf.writes = T
+)
+
+print(posterior)
+```
+
+```{r}
+densityPlot(object = model, obs = as.data.frame(t(d_obs)), training = d_sim_spo, paral = TRUE,
+            xlab = expression(paste(log[10], "(Mutation rate)")),
+            ylab = "Prob density",
+            main = ""
+)
+
+```
+
+
+
+```{r}
+
+smr <- c(10^posterior$med, 10^posterior$quantiles)
+names(smr) <- c("median", "q2.5", "q97.5")
+print(smr)
+
+```
+
+
+## Truth
+
+```{r}
+print(as.numeric(readLines("data/mu_truth.txt.gz")))
+
+```
+
+
