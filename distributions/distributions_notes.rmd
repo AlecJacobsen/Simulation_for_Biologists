@@ -157,7 +157,7 @@ Let's measure the time it takes to obtain the number of throws until the first s
 
 ```{r}
 system.time(
-            sapply(1:10,
+            sapply(1:100,
                    function(x){
                            get_nrounds(prob = 1e-6)
                    }
@@ -171,7 +171,7 @@ And if we use geometric sampling
 
 ```{r}
 system.time(
-        rgeom(n = 10000, prob = 1/6) + 1 # + 1 for the first success
+        rgeom(n = 100, prob = 1/6) + 1 # + 1 for the first success
 )
 
 ```
