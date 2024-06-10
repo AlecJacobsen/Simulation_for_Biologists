@@ -22,8 +22,7 @@ knitr::opts_chunk$set(
   class.source = "numberLines lineAnchors",
   cache = TRUE
 )
-library("reticulate")
-use_python("/usr/bin/python3")
+
 ```
 
 
@@ -45,7 +44,27 @@ knitr::include_graphics("figs/cow.jpg")
 
 
 
-# Bernoulli trials and Binomial distribution
+
+
+# Summary
+
++ Binomial distribution: discrete number of successes
+  + $n$: number of trials (`size` in `rbinom()`)
+  + $p$: prob. of success
+  + `rbinom(1, size = n, prob = p)` for discrete random variable $k$ successes $k \sim B(n, p)$
++ Geometric distribution: discrete number of failures before the first success
+  + $p$: prob. of success
+  + `rgeom(1, prob = p)` for discrete random variable $k$ trials $k \sim G(p)$
++ Poisson distribution: discrete number of events
+  + $\lambda$: rate of events per unit of continuous time/space.
+  + `rpois(1, lambda = lambda)` for discrete random variable $k$ events $k \sim Pois(\lambda)$
++ Exponential distribution: continuous waiting time until the first event
+  + $\lambda$: rate of events per unit of continuous time/space.
+  + `rexp(1, rate = lambda)` for continuous random variable $x$ units $x \sim Exp(\lambda)$
+
+
+
+# Binomial distribution
 
 
 Throw a die once.
@@ -57,14 +76,9 @@ In `R`, we can use the `rbinom` function for binomial sampling.
 Confusingly, in R, the number of trials is `size` and the number of binomial samplings is `n`.
 
 
-```{r}
-?rbinom
-```
-
-
 Let's throw a die 100 times and count the number of successes (e.g. the side of 1).
 ```{r}
-rbinom(n = 1, size = 100, 1/6)
+rbinom(n = 1, size = 100, prob = 1/6) # B(100, 1/6)
 ```
 
 
@@ -74,7 +88,7 @@ Let's repeat this 10, 100, 1,000, 10,000 times to see the distribution of the nu
 ```{r}
 par(mfrow=c(2,2))
 for(n in c(10, 100, 1000, 10000)){
-        hist(rbinom(n = n, size = 100, 1/6),
+        hist(rbinom(n = n, size = 100, prob = 1/6),
              main = paste0(n, " times"),
              xlab = "N. successes"
         )
@@ -84,7 +98,7 @@ for(n in c(10, 100, 1000, 10000)){
 This distribution will approach the probability mass function of the binomial distribution.
 
 ```{r}
-x <- 1:30
+x <- 1:100
 plot(x, dbinom(x = x, size = 100, prob = 1/6),
      main = "B(100, 1/6)",
      ylab = "Prob",
@@ -168,20 +182,50 @@ This is a good example that you can still implement your simulation without know
 # Poisson distribution
 
 
-Consider taking a 1 mL from a cell suspension at 5,000,000 cells/L (5,000 cell/mL on average).
+Consider taking 1 mL from a cell suspension at 5,000,000 cells/L (5,000 cell/mL on average).
 Instead of 1 time of pipetting of 1 mL, let's pipette $n$ times, $1/n$ mL each.
-When $n$ is very large, one taken suspension ($1/n$ mL) has no cells most of the time, or has 1 cell at the probability of $5000/n$.
-So the number of cells in the taken 1 mL suspension can be considered as the limit of binomial sampling of $n$ trials with probability of success of $5000/n$ as $n$ tends to be infinity.
-This limit of binomial distribution is called **Poisson** distribution, which is used to model the random number of events that happen at a constant rate $\lambda$ per unit of continuous time or space.
-In other words, the continuous time/space version of binomial sampling is the Poisson process.
+When $n$ is very large, the probability that multiple cells are in the taken $1/n$ mL is so low that it contains either one cell at a probability of $5000/n$ or no cells at a probability of $1 - 5000/n$.
+By considering of having one cell as success, the total number of cells in the $n$ portions (thus 1 mL) should follow the binomial distribution B(n, p), where $p=5000/n$.
+When $n \to \infty$, the binomial distribution approaches a **Poisson** distribution.
+The Poisson distribution has one parameter, the rate $\lambda$, which depicts the number of events per unit of time or space (in this case, volume).
+In this example, the number of cells in a sampled suspension of 1 mL should follow a Poisson distribution with $\lambda = 5000$.
 
-In the above example, the cell concentration corresponds to the rate parameter.
-Take a 1 mL of cell suspension from 5,000 cells/mL.
+Let's take a 1 mL of cell suspension from 5,000 cells/mL.
 
 ```{r}
-rpois(n = 1, 5000)
+rpois(n = 1, lambda = 5000)
 
 ```
+
+
+
+A nice thing about Poisson distribution is that you can define the unit of time/space as you like as long as the rate parameter is linearly scaled.
+In the example above, if we take 10 mL instead of 1 mL, the number of sampled cells should now follow another Poisson distribution with $\lambda = 5000 \times 10 = 50,000$.
+
+
+Let's think of the number of mutations (mutation rate of $1\times10^{-9}$ per year per bp) between two homologous sequences of DNA of 1,000,000 bp, where TMRCA is 500,000 years ago.
+The total branch length between the two sequences is 100,000 years, and mutation occurs at a rate of $\mathrm{1,000,000 [years] \times 1,000,000 [bp] \times 10^{-9} [year^{-1} bp^{-1}] = 1,000}$.
+So the number of mutations follows a Poisson distribution with $\lambda = 1,000$.
+
+```{r}
+rpois(n = 1, lambda = 1000)
+```
+
+
+We could think of the same problem with binomial sampling, where mutation can occur at a very low probability ($10^{-9}$ per year per bp) with many trials (1,000,000 [bp] $\times$ 1,000,000 [years] = 1,000,000,000,000 trials)
+We can see how close both ways are:
+
+```{r}
+plot(800:1200, dpois(800:1200, lambda = 1000), 
+     type = 'l', 
+     col = "blue", 
+     xlab = "N of mutations",
+     ylab = "Probability (density)"
+)
+lines(800:1200, dbinom(800:1200, 1e12, 1e-9), type = 'l', col = "red", lty = 2)
+```
+
+
 
 
 # Exponential distribution
@@ -193,10 +237,16 @@ As is the Poisson distribution, the exponential distribution has one parameter, 
 
 
 Let's sample the amount of suspension at 5,000 cells/mL until you get the first cell.
+Confusingly, `lambda` in `rgeom()` is the same rate parameter as `rate` in `rexp()`.
+
 
 ```{r}
 rexp(1, 5000)
 ```
+
+
+
+
 
 
 According to [Wikipedia](https://en.wikipedia.org/wiki/Lightning_strike), the lifetime probability of a fatal lightning strike is 1/60000.
@@ -212,18 +262,6 @@ print(paste(rexp(1, 1/60000) * 70, "years"))
 
 
 
-
-# Summary
-
-+ Binomial distribution B(n, p): discrete number of successes
-  + $n$: number of trials (`size` in `rbinom()`)
-  + $p$: prob. of success
-+ Geometric distribution: discrete number of failures before the first success
-  + $p$: prob. of success
-+ Poisson distribution: discrete number of events
-  + $\lambda$: rate of events per unit of continuous time/space.
-+ Exponential distribution: continuous waiting time until the first event
-  + $\lambda$: rate of events per unit of continuous time/space.
 
 
 # Other distributions used in the course
