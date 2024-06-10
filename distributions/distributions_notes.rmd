@@ -1,0 +1,282 @@
+---
+title: | 
+  | Introduction to Simulation for Biologists:
+  | Probability Distributions
+author: 
+        - Jun Ishigohoka
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output: 
+   pdf_document
+header-includes:
+ \usepackage{titling}
+ \usepackage{float}
+ \floatplacement{figure}{H}
+
+
+linkcolor: blue
+urlcolor: blue
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_chunk$set(
+  class.source = "numberLines lineAnchors",
+  cache = TRUE
+)
+library("reticulate")
+use_python("/usr/bin/python3")
+```
+
+
+
+\pagenumbering{gobble}
+
+```{r, echo = F,out.width = '70%', fig.align = "center"}
+knitr::include_graphics("figs/cow.jpg")
+```
+
+\newpage
+\setcounter{tocdepth}{2}
+\tableofcontents 
+
+
+
+\newpage
+\pagenumbering{arabic}
+
+
+
+# Bernoulli trials and Binomial distribution
+
+
+Throw a die once.
+The outcome is success if the side is 1, failure otherwise.
+This type of trial where the outcome is either success or failure with a certain probability is called a **Bernoulli trial**.
+The distribution of the number of successes $x$ out of $n$ independent Bernoulli trials ($0 \le x \le n$) is the **binomial distribution**.
+
+In `R`, we can use the `rbinom` function for binomial sampling.
+Confusingly, in R, the number of trials is `size` and the number of binomial samplings is `n`.
+
+
+```{r}
+?rbinom
+```
+
+
+Let's throw a die 100 times and count the number of successes (e.g. the side of 1).
+```{r}
+rbinom(n = 1, size = 100, 1/6)
+```
+
+
+Let's repeat this 10, 100, 1,000, 10,000 times to see the distribution of the number of successes.
+
+
+```{r}
+par(mfrow=c(2,2))
+for(n in c(10, 100, 1000, 10000)){
+        hist(rbinom(n = n, size = 100, 1/6),
+             main = paste0(n, " times"),
+             xlab = "N. successes"
+        )
+}
+```
+
+This distribution will approach the probability mass function of the binomial distribution.
+
+```{r}
+x <- 1:30
+plot(x, dbinom(x = x, size = 100, prob = 1/6),
+     main = "B(100, 1/6)",
+     ylab = "Prob",
+     xlab = "N. successes"
+)
+```
+
+
+
+# Geometric distribution
+
+Let's keep throwing a die until the side is 1.
+How many times does it take?
+
+Naively, we can loop binomial sampling until it succeeds.
+
+```{r}
+get_nrounds <- function(prob){
+        c <- 0
+        n <- 0
+        while(n == 0){
+                c <- c + 1
+                n <- rbinom(n = 1, size = 1, prob = prob)
+        }
+        return(c)
+}
+
+
+get_nrounds(prob = 1/6)
+```
+
+Let's visualise how this waiting time is distributed
+
+```{r}
+n_rounds_loop <- sapply(1:10000,
+       function(x){
+               get_nrounds(prob = 1/6)
+       }
+)
+hist(n_rounds_loop, breaks = seq(1,100))
+```
+
+
+The number of failures before the first success is known to follow a **geometric distribution**.
+So, instead of looping binomial/Bernoulli trials, we can directly obtain the number of throws from a geometric distribution using `rgeom` function.
+
+
+```{r}
+n_rounds_rgeom <- rgeom(n = 10000, prob = 1/6) + 1 # + 1 for the first success
+hist(n_rounds_rgeom, breaks = seq(1,100))
+```
+
+
+Using a geometric sampling instead of looping is more efficient especially when the probability of success is very low.
+Let's measure the time it takes to obtain the number of throws until the first success 100 times using the loop.
+
+```{r}
+system.time(
+            sapply(1:10,
+                   function(x){
+                           get_nrounds(prob = 1e-6)
+                   }
+            )
+)
+
+```
+
+
+And if we use geometric sampling
+
+```{r}
+system.time(
+        rgeom(n = 10000, prob = 1/6) + 1 # + 1 for the first success
+)
+
+```
+
+This is a good example that you can still implement your simulation without knowing probability distributions, yet knowing distributions makes your simulation faster and more efficient!
+
+
+# Poisson distribution
+
+
+Consider taking a 1 mL from a cell suspension at 5,000,000 cells/L (5,000 cell/mL on average).
+Instead of 1 time of pipetting of 1 mL, let's pipette $n$ times, $1/n$ mL each.
+When $n$ is very large, one taken suspension ($1/n$ mL) has no cells most of the time, or has 1 cell at the probability of $5000/n$.
+So the number of cells in the taken 1 mL suspension can be considered as the limit of binomial sampling of $n$ trials with probability of success of $5000/n$ as $n$ tends to be infinity.
+This limit of binomial distribution is called **Poisson** distribution, which is used to model the random number of events that happen at a constant rate $\lambda$ per unit of continuous time or space.
+In other words, the continuous time/space version of binomial sampling is the Poisson process.
+
+In the above example, the cell concentration corresponds to the rate parameter.
+Take a 1 mL of cell suspension from 5,000 cells/mL.
+
+```{r}
+rpois(n = 1, 5000)
+
+```
+
+
+# Exponential distribution
+
+Continuing on the example of taking cells, let's keep sucking the solution until we get the first cell.
+The random amount of suspension to take until we get the first cell follows a continuous distribution called **exponential distribution**, which is the limit of geometric distribution where $\lambda = np$ and $n \to \infty$.
+As is the Poisson distribution, the exponential distribution has one parameter, the rate $\lambda$.
+
+
+
+Let's sample the amount of suspension at 5,000 cells/mL until you get the first cell.
+
+```{r}
+rexp(1, 5000)
+```
+
+
+According to [Wikipedia](https://en.wikipedia.org/wiki/Lightning_strike), the lifetime probability of a fatal lightning strike is 1/60000.
+So the time it takes for you to die of a lightning hit can be modelled with an exponential distribution.
+Let's sample one such event.
+
+
+```{r}
+print(paste(rexp(1, 1/60000) * 70, "years"))
+
+```
+
+
+
+
+
+# Summary
+
++ Binomial distribution B(n, p): discrete number of successes
+  + $n$: number of trials (`size` in `rbinom()`)
+  + $p$: prob. of success
++ Geometric distribution: discrete number of failures before the first success
+  + $p$: prob. of success
++ Poisson distribution: discrete number of events
+  + $\lambda$: rate of events per unit of continuous time/space.
++ Exponential distribution: continuous waiting time until the first event
+  + $\lambda$: rate of events per unit of continuous time/space.
+
+
+# Other distributions used in the course
+
+## Hypergeometric distribution
+
+The hypergeometric distribution describes the probability of $k$ successes (random draws for which the object drawn has a specified feature) in $n$ draws, **without replacement**, from a finite population of size $N$ that contains exactly $K$ objects with that feature, wherein each draw is either a success or a failure.
+This is similar to binomial distribution, but it is sampling without replacement.
+
+The hypergeometric distribution is often seen in enrichment analysis.
+For example, in the context of gene ontology analysis, $N$ is the number of all genes, $K$ is the number of all genes of a focal gene ontology term, $n$ is the number of significant genes, $k$ is the number of significant genes of a focal gene ontology.
+
+
+Let's sample a number of genes out of 100 significant genes that are of one GO term, when there are 2000 genes of this GO term in 10000 genes throughout the genome.
+
+```{r}
+rhyper(1, 
+       m = 2000, # number of genes of a GO type in the genome
+       n = 10000 - 2000, # number of genes that are not the GO type in the genome
+       k = 100 # number of significant genes
+)
+```
+
+
+Let's compute the p-value of observing 50 out of 100 significant genes that are of this GO term.
+
+```{r}
+phyper(50,  # number of significant genes of the GO type
+       m = 2000, # number of genes of the GO type in the genome
+       n = 10000 - 2000, # number of genes that are not the GO type in the genome
+       k = 100,  # number of significant genes
+       lower.tail = F
+)
+
+
+```
+
+
+## Normal distribution
+
+According to the central limit theorem, the average of many observations of some random variable is a random variable, whose distribution converges to a normal distribution as the number of samples increases.
+Quantities that are expected to be the sum of many independent processes, such as quantitative genetic traits and errors, can be modelled to follow a normal distribution.
+
+
+Let's sample a normal random variable with mean of 175 and variance of standard deviation of 6.
+
+```{r}
+rnorm(1, 
+      mean = 175,
+      sd = 6
+)
+
+```
+
+
+
