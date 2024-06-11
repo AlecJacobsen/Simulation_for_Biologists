@@ -128,8 +128,7 @@ But how can we go about simulating something like this?
 Here is a recommendation for how to start with a simulation in general:
 
 1. **Make your question and hypotheses as concrete as possible**.
-1. **Design an experiment** that should answer your question by testing your hypotheses.
-1. **Develop a good mental/visual/verbal model of steps of the experiment.** Make sure you understand the biology and the technical aspects of what you want to simulate.
+1. **Design an experiment** that should answer your question by testing your hypotheses. **Develop a good mental/visual/verbal model of steps of the experiment.** Make sure you understand the biology and the technical aspects of what you want to simulate.
 1. **Break it down into subprocesses** What are the different steps involved going from initialization to final product?
 Describe in (painful) detail how each subprocess works - pretend like you have to describe it to an alien who has never been to Earth and knows nothing how the subprocess works.
 <!--No detail is too insignificant!-->Be sure to think about potential biases.
@@ -671,7 +670,9 @@ tubes_count_b <- sapply(1:r,
 
 Before plating, we have `n_re` resistant cells and `n_wt` wild type cells.
 In experiment A, we sample `n_sample` cells without replacement sequentially over r times.
+<!--
 Each plating is equivalent to taking some balls from a box with some red and blue balls without replacement, and the number of balls with one colour follows a hypergeometric distribution.
+-->
 
 
 ```{r}
