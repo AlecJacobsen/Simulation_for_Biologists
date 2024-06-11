@@ -52,7 +52,7 @@ This was the question faced by Salvador Lauria and Max Delbrück ^[For intereste
 For historical context, this was 30 years after @sturtevant_linear_1913 performed gene mapping in *Drosophila*, around the same time as @avery_studies_1944 found nucleic acid instead of protein was responsible for transformation of Pneumococcus, almost 10 years before DNA was confirmed to be genetic material by @hershey_independent_1952 and the structure of DNA was solved by @watson_molecular_1953, and more than 20 years before the neutral theory of molecular evolution was proposed by @kimura_evolutionary_1968.
 
 
-The inspiration for such a question comes from observing the interaction between bacteria and bacteriophages (i.e. viruses that infect bacteria).
+The inspiration for such a question came from observing the interaction between bacteria and bacteriophages (i.e. viruses that infect bacteria).
 A colony of bacteria growing in a flask will eventually turn the medium in the flask cloudy as the number of cells increases.
 It was noted that adding an equal number of phages to the flask would clear the water, as the phages lysed open the bacterial cells.
 However, after some time the medium in the flask would become cloudy again.
@@ -98,7 +98,7 @@ The number of resistant colonies were then counted on each plate.
 knitr::include_graphics("figs/LD_exp.png")
 ```
 
-If the first model (induced mutation by exposure to phages) is true, then we would expect that the variance in the number of resistant colonies per plate would be the same for experiment A and B.
+If the first model (induced mutation by exposure to phages) is true, then we would expect the variance in the number of resistant colonies per plate to be the same for experiment A and B.
 This is because resistance is induced at a certain rate once the bacteria are plated out, and would not depend on what had happened while the bacteria grew in the test tubes.
 In other words, each plate would be an independent sample, regardless of if the bacteria came from the same test tube or not - hence equal variances.
 
@@ -106,12 +106,12 @@ If the second model (spontaneous mutations in tubes before exposure to phages) i
 This is due to the fact that the resistance mutation occurs spontaneously during growth in the test tube.
 When plating out experiment A, the number of resistant colonies is representative of the frequency of resistance in the single tube, so each plate is not independent.
 On the other hand, in experiment B each tube has had an independent phase of growth, during which resistance may have spontaneously evolved early on, resulting in a high frequency of resistant colonies, or later on, resulting in few resistant colonies.
-In other words, because the number of cells increase exponentially during the growth, depending on the timing of mutation the number of resistant cells at the end point should vary by orders of magnitudes, manifested as larger variance in experiment B than in A.
+In other words, because the number of cells increase exponentially during growth, depending on the timing of mutation the number of resistant cells at the end point should vary by orders of magnitudes, manifested as larger variance in experiment B than in A.
 
 
 When @luria_mutations_1943 performed this experiment, mathematical analysis was conducted to obtain expectation for both models.
 By comparing the experimental results and the theory they developed, they found that the spontaneous mutation model is true. 
-However, what if you, a curious biologist equipped with neither the strongest mathematical training nor interest, were in their place?
+However, what if you, a curious biologist equipped with neither mathematical training nor interest, were in their place?
 How would you decide on the specifics of this experiment?
 How many replicates would you need, or how many bacteria would you plate out?
 How many generations would need to be run to see an effect at the mutation rate you would expect?
@@ -564,9 +564,9 @@ We will further optimise the simulators in the next section, but you are already
 
 1.
   a. Under the spontaneous mutation model, for a mutation rate of $1\times 10^{-4}$, $T$ of 15 generations, $n_{sample}$ of 10000, $r$ of 50, and $n_0$ of 100 cells, the how much difference in the variance is expected to exist between experiments A and B?
-  a. Under the induced mutation model, what mutation rate would result in mean number of resistant cells per plate in experiments A and B same as in the spontaneous mutation model?
+  a. Under the induced mutation model, what mutation rate would result in the mean number of resistant cells per plate in experiments A and B being the same as in the spontaneous mutation model?
   a. In the induced mutation model with this mutation rate, what is the difference in variance between experiments A and B? How do they differ from the spontaneous mutation model?
-1. Focus on one parameter (e.g. $\mu$, $n_{sample}$, $T$, $r$). Try to get an intuition of requirement of the parameter under which the induced and spontaneous mutation models can be distinguished.
+1. Focus on one parameter (e.g. $\mu$, $n_{sample}$, $T$, $r$). Try to get an intuition of the value of this parameter under which the induced and spontaneous mutation models can be distinguished.
 1. Try changing the code to induce some variation in $n_{sample}$ for each replicate plate. How does this influence the results?
 1. Finally, try implementing some standing genetic variation for resistance in the ancestral population (i.e. flask) from which each tube is started. Does this disrupt the experimental design?
 
@@ -599,8 +599,8 @@ n_re <- 0
 ## Step 2. Growth
 
 
-In each generation, daughter cells of resistant cells are all resistant.
-Some of daughter cells of wild type cells mutate to resistant, and the number of such cells follow a binomial distribution with the size parameter of 2 x n. wild type parent cells.
+In each generation, the daughter cells of resistant cells are all resistant.
+Some of the daughter cells of wild type cells mutate to become resistant, and the number of such cells follow a binomial distribution with the number of trials of $2 \times$ number of wild type parent cells.
 
 
 ```{r}
@@ -879,7 +879,8 @@ hist(res_1_spo$dif_var, main = "Spontaneous")
 
 ## Q1b
 
-Under the induced mutation model, what mutation rate would result in mean number of resistant cells per plate in experiments A and B same as in the spontaneous mutation model?
+Under the induced mutation model, what mutation rate would result in the mean number of resistant cells per plate in experiments A and B same as in the spontaneous mutation model?
+
 
 
 The mean of mean in experiments A and B in the spontaneous mutation model are
