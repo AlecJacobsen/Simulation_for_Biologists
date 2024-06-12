@@ -47,7 +47,6 @@ knitr::include_graphics("figs/abc.jpg")
 mu_truth <- pi * 10^(-8)
 write.table(mu_truth, "data/mu_truth.txt", row.names = F, col.names = F)
 system("gzip -f data/mu_truth.txt")
-
 ```
 
 # Introduction
@@ -67,13 +66,13 @@ where $\rho (D_{sim} , D_{obs})$ denotes the distance (e.g. Euclidean) between $
 In simple words, this means that we reject a parameter $\theta$ under model $M$ if the simulated data $D_{sim}$ is too different from $D_{obs}$.
 
 
-The probability of generating a dataset $D_{sim}$ closer to the observed dataset $D_{obs}$ than the distance measure of $\epsilon$ typically decreases as the dimensionality of the data increases (Think of throwing 100 coins otherwise identical but with 100 different colours).
-This is problematic for ABC because it reduces the computational efficiency.
-To deal with this issue, a set of summary statistics $S(D)$ with a lower dimensionality is used, instead of raw data $D$.
-In the Luria-Delbrück experiment, one can use mean and variance of resistant colonies per plate instead of frequency distribution of number of colonies.
+The probability of generating a dataset $D_{sim}$ closer to the observed dataset $D_{obs}$ than the distance measure of $\epsilon$ typically decreases as the dimensionality of the data increases.
+This is problematic for ABC because it reduces the computational efficiency as would required more replicates of simulation.
+To deal with this issue, a set of summary statistics $S(D)$ with lower dimensionality are used, instead of raw data $D$.
+In the Luria-Delbrück experiment, one can use the mean and variance of resistant colonies per plate instead of the frequency distribution of the number of colonies.
 By substituting $D_{sim}$ and $D_{obs}$ with $S(D_{sim})$ and $S(D_{obs})$, the acceptance criterion of the ABC rejection algorithm becomes
 $$\rho(S(D_{sim}), S(D_{obs})) \le \epsilon$$
-By applying this rejection algorithm to all simulated data under model $M$, we obtain a subset of sampled parameter values, the distribution of which can be regarded as an approximation to the posterior distribution.
+By applying this rejection algorithm to all simulated data under model $M$, we obtain a subset of sampled parameter values, the distribution of which can be regarded as an approximation of the posterior distribution.
 
 
 
@@ -90,14 +89,14 @@ In simple words, the posterior probability of model $M_i$ is approximated as the
 Here, we will apply ABC to the Luria-Delbrück experiment.
 The objectives are 
 
-1. to determine which of the induced or spontaneous mutation models is the case;
-1. to estimate mutation rate under the model
+1. to determine which of the models (i.e. induced or spontaneous mutation) is the truth;
+1. to estimate the mutation rate under the model
 
 
 In this exercise, we will apply ABC to the Luria-Delbrück experiment.
-First, we will determine which of models (induced and spontaneous mutation) fits better to data.
-Second, we will infer parameter (mutation rate).
-To this end, we will use `abc` package [@csillery_abc_2012], which implements the rejection algorithm described above in functions.
+First, we will determine which of models (induced and spontaneous mutation) fits better to the data.
+Second, we will infer the parameter (mutation rate).
+To this end, we will use the `abc` package [@csillery_abc_2012], which implements the rejection algorithm described above in functions.
 Optionally, you can try other methods than the rejection algorithm implemented in `abc` (multinomial logistic regression and neural networks for model selection; local linear regression and neural networks for parameter inference) and ABC random forest implemented in `abcrf` [@raynal_abc_2019].
 
 
@@ -185,8 +184,14 @@ We store sampled mutation rates in a vector `mu_sim`.
 
 ```{r}
 nsims <- 10000
-mu_sim <- 10^runif(nsims, -10, -5)
+if(file.exists("data/d_sim_spo.rds")){
+        mu_sim <- readRDS("data/mu_sim.rds")
+}else{
+        mu_sim <- 10^runif(nsims, -10, -5)
+        saveRDS(mu_sim, "data/mu_sim.rds")
+}
 head(mu_sim)
+
 ```
 
 
@@ -288,7 +293,7 @@ summary(cv_modsel_rej)
 
 In the confusion matrix, the j-th column of the i-th row is the number of times that the i-th model were classified as the j-th model.
 Our confusion matrix shows that if the truth is the induced model, then you can tell that it is induced.
-If the truth is the spontaneous model, then you can tell that it is induced 68 times out of 100.
+If the truth is the spontaneous model, then you can tell that it is spontaneous 68 times out of 100.
 When the classified model is spontaneous, you can be sure that it is spontaneous.
 When the classified model is induced, the truth could still be the spontaneous model 32 times out of 132.
 
@@ -424,7 +429,7 @@ Let's estimate the mutation rate.
 parinf_abc <- abc(target = as.data.frame(t(d_obs)), 
                   param = log10(mu_sim),
                   sumstat = d_sim_spo,
-                  tol=0.01, 
+                  tol=0.05, 
                   method="rejection")
 
 plot(density(parinf_abc$unadj.value),
@@ -454,15 +459,27 @@ The vertical line is the true mutation rate, so ABC with the simple rejection al
 
 
 Lastly, let's check if the observed summary statistics are well represented by the summary statistics of the accepted simulations.
-Note this is a bit of cheating: one should actually simulate *a posteori* using parameters sampled from the posterior. 
+
+```{r}
+mu_posterior <- as.vector(10^ parinf_abc$unadj.values)
+
+d_sim_ppc <- as.data.frame(t(sapply(mu_posterior,
+       function(x){
+               simLD_spo(T, x, 100, n_0 * (2^T)/1e9, r)
+       }
+)))
+
+
+```
+
 
 
 ```{r}
 par(mfrow=c(2,2))
 for(i in 1:4){
-        hist(parinf_abc$ss[,i],
-             main = colnames(parinf_abc$ss)[i],
-             xlab = colnames(parinf_abc$ss)[i]
+        hist(d_sim_ppc[,i],
+             main = colnames(d_sim_ppc)[i],
+             xlab = colnames(d_sim_ppc)[i]
         )
         abline(v=d_obs[i], col = 2, lty = 2)
 }
@@ -470,11 +487,32 @@ for(i in 1:4){
 
 ```
 
-The observed summary statistics (vertical lines) are in the middle of those of accepted simulations.
+```{r}
+par(mfrow=c(2,2))
+for(i in 1:4){
+        hist(log10(d_sim_ppc[,i] + 1),
+             main = colnames(d_sim_ppc)[i],
+             xlab = paste0("log10(", colnames(d_sim_ppc)[i], " + 1)")
+        )
+        abline(v=log10(d_obs[i] + 1), col = 2, lty = 2)
+}
 
 
+```
 
+Let's get percentiles.
 
+```{r}
+
+sapply(1:4,
+        function(x){
+                rank(c(d_obs[x], d_sim_ppc[,x]))[1] / nrow(d_sim_ppc) * 100
+        }
+)
+
+```
+
+The observed data is reflected in the data simulated using parameter values taken from the (approximate) posterior distribution.
 
 
 # References
@@ -489,6 +527,8 @@ The observed summary statistics (vertical lines) are in the middle of those of a
 
 ## ABC random forest using `abcrf`
 
+
+The tutorial below of `abcrf` is based on <https://github.com/mnavascues/ABCRFtutorial>.
 
 ### Model selection
 
@@ -552,6 +592,10 @@ densityPlot(object = model, obs = as.data.frame(t(d_obs)), training = d_sim_spo,
             xlab = expression(paste(log[10], "(Mutation rate)")),
             ylab = "Prob density",
             main = ""
+)
+abline(v = log10(as.numeric(readLines("data/mu_truth.txt.gz"))),
+       col = 2,
+       lty = 2
 )
 
 ```
