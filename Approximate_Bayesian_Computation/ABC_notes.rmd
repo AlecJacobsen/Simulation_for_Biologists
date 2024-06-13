@@ -21,7 +21,7 @@ urlcolor: blue
 ```{r, setup, include=FALSE}
 knitr::opts_chunk$set(
   class.source = "numberLines lineAnchors",
-  cache = TRUE
+  cache = FALSE
 )
 ```
 
