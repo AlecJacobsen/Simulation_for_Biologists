@@ -184,7 +184,7 @@ We store sampled mutation rates in a vector `mu_sim`.
 
 ```{r}
 nsims <- 10000
-if(file.exists("data/d_sim_spo.rds")){
+if(file.exists("data/mu_sim.rds")){
         mu_sim <- readRDS("data/mu_sim.rds")
 }else{
         mu_sim <- 10^runif(nsims, -10, -5)
